@@ -9,7 +9,7 @@ Built for CSCE 3444 (Software Engineering), Section 400 — **Group 1**.
 | Name | Role Focus |
 |---|---|
 | Himal Gautam | Backend / Database (PostgreSQL, PostGIS, real-time chat) |
-| Ayush BHandari | UI/UX (auth, profile, ride screens) |
+| Ayush Bhandari | UI/UX (auth, profile, ride screens) |
 | Jared Blumenthal | Backend & Maps integration (rides, ratings) |
 | Ryan Moody | Auth backend, notifications, testing |
 
