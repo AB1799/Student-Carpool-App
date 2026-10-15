@@ -1,0 +1,36 @@
+import express from 'express';
+import helmet from 'helmet';
+import cors from 'cors';
+import {config} from './config.js';
+import {db} from './db.js';
+import {asyncRoute,errorHandler,HttpError} from './lib/errors.js';
+import authRoutes from './routes/auth.js';
+import userRoutes from './routes/users.js';
+import vehicleRoutes from './routes/vehicles.js';
+import rideRoutes from './routes/rides.js';
+import requestRoutes from './routes/requests.js';
+import bookingRoutes from './routes/bookings.js';
+import reviewRoutes from './routes/reviews.js';
+import reportRoutes from './routes/reports.js';
+const app=express();
+app.disable('x-powered-by');
+app.use(helmet());
+app.use(cors({origin:(origin,cb)=>{
+  if(!origin || config.clientOrigins.includes(origin)) return cb(null,true);
+  cb(new HttpError(403,'Origin not allowed','CORS_DENIED'));
+}}));
+app.use(express.json({limit:'50kb'}));
+app.get('/api/health',asyncRoute(async(req,res)=>{
+  await db('SELECT 1');res.json({status:'ok',database:'connected',service:'unt-carpool-backend'});
+}));
+app.use('/api/auth',authRoutes);
+app.use('/api/users',userRoutes);
+app.use('/api/vehicles',vehicleRoutes);
+app.use('/api/rides',rideRoutes);
+app.use('/api/requests',requestRoutes);
+app.use('/api/bookings',bookingRoutes);
+app.use('/api/reviews',reviewRoutes);
+app.use('/api/reports',reportRoutes);
+app.use((req,res,next)=>next(new HttpError(404,'Endpoint not found','NOT_FOUND')));
+app.use(errorHandler);
+export default app;
