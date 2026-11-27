@@ -14,7 +14,8 @@ export function validateConfig() {
   if (!Number.isInteger(config.trustProxyHops) || config.trustProxyHops < 0) throw new Error('TRUST_PROXY_HOPS must be a nonnegative integer');
   if (!config.databaseUrl) throw new Error('Set DATABASE_URL in .env');
   if (!config.jwtSecret || config.jwtSecret.length < 32 || config.jwtSecret.startsWith('REPLACE_')) throw new Error('Set a unique JWT_SECRET of at least 32 characters');
-  if (config.nodeEnv === 'production' && config.emailMode !== 'smtp') throw new Error('Production needs EMAIL_MODE=smtp');
+  if (config.nodeEnv === 'production' && config.emailMode === 'console') throw new Error('Production needs EMAIL_MODE=smtp or EMAIL_MODE=brevo');
   if (config.emailMode === 'smtp' && (!process.env.SMTP_HOST || !process.env.SMTP_FROM)) throw new Error('Set SMTP_HOST and SMTP_FROM in smtp mode');
-  if (!['smtp','console'].includes(config.emailMode)) throw new Error('EMAIL_MODE must be smtp or console');
+  if (config.emailMode === 'brevo' && (!process.env.BREVO_API_KEY || !process.env.BREVO_FROM)) throw new Error('Set BREVO_API_KEY and BREVO_FROM in brevo mode');
+  if (!['smtp','brevo','console'].includes(config.emailMode)) throw new Error('EMAIL_MODE must be smtp, brevo, or console');
 }

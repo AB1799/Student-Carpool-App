@@ -1,0 +1,28 @@
+services:
+  - type: web
+    name: unt-carpool-api
+    runtime: node
+    region: oregon
+    plan: free
+    rootDir: backend
+    buildCommand: npm ci --omit=dev
+    startCommand: npm run db:migrate && npm start
+    healthCheckPath: /api/health
+    autoDeployTrigger: "off"
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: CLIENT_ORIGIN
+        sync: false
+      - key: EMAIL_MODE
+        value: brevo
+      - key: BREVO_FROM
+        sync: false
+      - key: BREVO_API_KEY
+        sync: false

@@ -12,12 +12,31 @@ function smtpTransport() {
   }
   return transport;
 }
+async function sendEmail(to, subject, text) {
+  if(config.emailMode === 'brevo') {
+    const response=await fetch('https://api.brevo.com/v3/smtp/email',{
+      method:'POST',
+      headers:{'api-key':process.env.BREVO_API_KEY,'Content-Type':'application/json','Accept':'application/json'},
+      body:JSON.stringify({
+        sender:{name:'UNT Carpool',email:process.env.BREVO_FROM},
+        to:[{email:to}],
+        subject,
+        textContent:text,
+      }),
+      signal:AbortSignal.timeout(10_000),
+    });
+    if(response.body) await response.body.cancel().catch(()=>{});
+    if(!response.ok) throw new Error(`Brevo email delivery failed (${response.status})`);
+    return;
+  }
+  await smtpTransport().sendMail({from:process.env.SMTP_FROM,to,subject,text});
+}
 export async function sendVerificationEmail(email, code) {
   if(config.emailMode === 'console') {
     console.log(`[DEV ONLY] Verification code for ${email}: ${code}`);
     return;
   }
-  await smtpTransport().sendMail({from:process.env.SMTP_FROM,to:email,subject:'UNT Carpool verification code',text:`Your UNT Carpool verification code is ${code}. It expires in 10 minutes.`});
+  await sendEmail(email,'UNT Carpool verification code',`Your UNT Carpool verification code is ${code}. It expires in 10 minutes.`);
 }
 
 export async function sendPasswordResetEmail(email, code) {
@@ -25,8 +44,7 @@ export async function sendPasswordResetEmail(email, code) {
     console.log(`[DEV ONLY] Password reset code for ${email}: ${code}`);
     return;
   }
-  await smtpTransport().sendMail({
-    from:process.env.SMTP_FROM,to:email,subject:'Reset your UNT Carpool password',
-    text:`Paste this reset code into UNT Carpool within 20 minutes:\n\n${code}\n\nIf you did not request this, you can ignore this message.`,
-  });
+  await sendEmail(email,'Reset your UNT Carpool password',
+    `Paste this reset code into UNT Carpool within 20 minutes:\n\n${code}\n\nIf you did not request this, you can ignore this message.`,
+  );
 }

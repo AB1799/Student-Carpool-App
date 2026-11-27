@@ -42,3 +42,11 @@ The web build provides in-app notifications. Native push registration and delive
 The root `render.yaml` provisions one Static Site. It builds from `frontend`, publishes `dist`, and enables the sample-data experience. To publish it, link the branch containing this file through Render Blueprints. The Blueprint disables automatic deployments.
 
 To connect it to a live backend later, set `EXPO_PUBLIC_DEMO_ONLY=false` in the Blueprint and set `EXPO_PUBLIC_API_URL` to the hosted API origin in Render. Add the static site's HTTPS origin to the backend's `CLIENT_ORIGIN` and rebuild the static site.
+
+## Live website on free tiers
+
+Create a Neon Free project with PostgreSQL and copy its direct TLS connection string for `DATABASE_URL`. Create a Brevo Free account, verify a sender, and generate an email API key. The application sends signup and reset messages over HTTPS.
+
+Deploy the `render.live.yaml` Blueprint from Render. It creates a single Free web service and reads the Neon URL, website origin, and Brevo values from Render's environment. The service applies migrations when it starts. Set `CLIENT_ORIGIN` to the exact HTTPS origin of the static website. Do not put the database or mail credentials in Git or Expo environment variables.
+
+After the API health check passes, use the existing Static Site's Environment page to set `EXPO_PUBLIC_DEMO_ONLY=false`, `EXPO_PUBLIC_ENABLE_DEMO=false`, and `EXPO_PUBLIC_API_URL` to the API's HTTPS origin. Redeploy the static site. The demo Blueprint sets its original defaults at sync, so avoid resyncing that Blueprint unless those defaults have been updated. Verify signup with a real UNT mailbox before sharing it widely. Free Render services may need time to wake on the first request.
