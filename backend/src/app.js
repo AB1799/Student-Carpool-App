@@ -17,6 +17,7 @@ import myRidesRoutes from './routes/myRides.js';
 import ratingsRoutes from './routes/ratings.js';
 const app=express();
 app.disable('x-powered-by');
+if(config.trustProxyHops) app.set('trust proxy',config.trustProxyHops);
 app.use(helmet());
 app.use(cors({origin:(origin,cb)=>{
   if(!origin || config.clientOrigins.includes(origin)) return cb(null,true);
@@ -34,6 +35,9 @@ app.use('/api/requests',requestRoutes);
 app.use('/api/bookings',bookingRoutes);
 app.use('/api/reviews',reviewRoutes);
 app.use('/api/reports',reportRoutes);
+app.use('/api/maps',mapsRoutes);
+app.use('/api/my-rides',myRidesRoutes);
+app.use('/api/ratings',ratingsRoutes);
 app.use((req,res,next)=>next(new HttpError(404,'Endpoint not found','NOT_FOUND')));
 app.use(errorHandler);
 export default app;

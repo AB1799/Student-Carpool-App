@@ -10,11 +10,11 @@
 
 import { Router } from 'express';
 import { db } from '../db.js';
-import { auth } from '../middleware/auth.js';
+import { auth, requireVerified } from '../middleware/auth.js';
 import { asyncRoute } from '../lib/errors.js';
 
 const router = Router();
-router.use(auth); // must be logged in
+router.use(auth, requireVerified); // must be logged in
 
 router.get('/', asyncRoute(async (req, res) => {
   const myId = req.user.id;

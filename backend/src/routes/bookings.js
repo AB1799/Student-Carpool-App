@@ -2,7 +2,7 @@ import {Router} from 'express';
 import {z} from 'zod';
 import {db} from '../db.js';
 import {auth} from '../middleware/auth.js';
-import {asyncRoute} from '../lib/errors.js';
+import {asyncRoute,assert} from '../lib/errors.js';
 import {getAccessibleBooking} from '../services/bookings.js';
 const router=Router();router.use(auth);
 router.get('/',asyncRoute(async(req,res)=>{
@@ -17,6 +17,7 @@ router.get('/',asyncRoute(async(req,res)=>{
 router.get('/:id/messages',asyncRoute(async(req,res)=>{
   const id=z.string().uuid().parse(req.params.id);
   const booking=await getAccessibleBooking(id,req.user.id);
+  assert(['CONFIRMED','COMPLETED'].includes(booking.status),409,'Chat is unavailable for this booking','CHAT_CLOSED');
   const {rows}=await db(`SELECT m.id,m.booking_id AS "bookingId",m.sender_id AS "senderId",u.full_name AS "senderName",m.body,m.created_at AS "createdAt"
     FROM messages m JOIN users u ON u.id=m.sender_id WHERE m.booking_id=$1 ORDER BY m.created_at DESC,m.id DESC LIMIT 100`,[booking.id]);
   res.json({messages:rows.reverse()});

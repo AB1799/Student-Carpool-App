@@ -12,18 +12,25 @@
 //      in the normal ride routes.
 
 import { Router } from 'express';
-import { auth } from '../middleware/auth.js';
+import { rateLimit } from 'express-rate-limit';
+import { z } from 'zod';
+import { auth, requireVerified } from '../middleware/auth.js';
 import { asyncRoute } from '../lib/errors.js';
 import * as maps from '../services/maps.js';
 
 const router = Router();
-router.use(auth); // must be logged in
+router.use(auth, requireVerified);
+router.use(rateLimit({
+  windowMs: 60_000, limit: 60, keyGenerator: req => req.user.id,
+  standardHeaders: 'draft-7', legacyHeaders: false,
+  message: {error: 'Too many map requests. Try again in a minute.', code: 'RATE_LIMITED'},
+}));
 
 // asyncRoute (from Himal's errors.js) sends any error to the error handler,
 // so we don't need try/catch in every route.
 
 router.get('/autocomplete', asyncRoute(async (req, res) => {
-  const text = (req.query.text || '').trim();
+  const {text} = z.object({text: z.string().trim().max(200).default('')}).parse(req.query);
 
   // Don't waste Google calls on 1 or 2 letters
   if (text.length < 3) {
@@ -35,8 +42,10 @@ router.get('/autocomplete', asyncRoute(async (req, res) => {
 }));
 
 router.get('/geocode', asyncRoute(async (req, res) => {
-  const placeId = (req.query.placeId || '').trim();
-  const address = (req.query.address || '').trim();
+  const {placeId,address} = z.object({
+    placeId: z.string().trim().max(512).optional(),
+    address: z.string().trim().max(200).optional(),
+  }).parse(req.query);
 
   let location = null;
   if (placeId) {
@@ -54,15 +63,11 @@ router.get('/geocode', asyncRoute(async (req, res) => {
 }));
 
 router.get('/reverse', asyncRoute(async (req, res) => {
-  const lat = Number(req.query.lat);
-  const lng = Number(req.query.lng);
-
-  // Number('') is 0, so also make sure something was actually sent
-  const latOk = req.query.lat && Number.isFinite(lat) && lat >= -90 && lat <= 90;
-  const lngOk = req.query.lng && Number.isFinite(lng) && lng >= -180 && lng <= 180;
-  if (!latOk || !lngOk) {
-    return res.status(400).json({ error: 'lat and lng must be valid numbers', code: 'VALIDATION_ERROR' });
-  }
+  const coordinates = z.object({
+    lat: z.string().trim().min(1).pipe(z.coerce.number().min(-90).max(90)),
+    lng: z.string().trim().min(1).pipe(z.coerce.number().min(-180).max(180)),
+  });
+  const {lat,lng} = coordinates.parse(req.query);
 
   const location = await maps.reverseGeocode(lat, lng);
   if (!location) {
