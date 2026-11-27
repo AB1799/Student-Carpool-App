@@ -5,7 +5,7 @@ export const config = {
   port: Number(process.env.PORT || 4000),
   databaseUrl: process.env.DATABASE_URL,
   jwtSecret: process.env.JWT_SECRET,
-  clientOrigins: (process.env.CLIENT_ORIGIN || 'http://localhost:8081,http://localhost:19006').split(',').map(s=>s.trim()),
+  clientOrigins: (process.env.CLIENT_ORIGIN || 'http://localhost:8081,http://localhost:19006').split(',').map(s=>s.trim()).concat(process.env.RENDER_EXTERNAL_URL || []).filter(Boolean),
   emailMode: process.env.EMAIL_MODE || 'console',
   expoEnabled: process.env.EXPO_PUSH_ENABLED === 'true',
   expoToken: process.env.EXPO_ACCESS_TOKEN || '',
@@ -14,7 +14,8 @@ export function validateConfig() {
   if (!Number.isInteger(config.trustProxyHops) || config.trustProxyHops < 0) throw new Error('TRUST_PROXY_HOPS must be a nonnegative integer');
   if (!config.databaseUrl) throw new Error('Set DATABASE_URL in .env');
   if (!config.jwtSecret || config.jwtSecret.length < 32 || config.jwtSecret.startsWith('REPLACE_')) throw new Error('Set a unique JWT_SECRET of at least 32 characters');
-  if (config.nodeEnv === 'production' && config.emailMode !== 'smtp') throw new Error('Production needs EMAIL_MODE=smtp');
+  if (config.nodeEnv === 'production' && config.emailMode === 'console') throw new Error('Production needs EMAIL_MODE=smtp or brevo');
   if (config.emailMode === 'smtp' && (!process.env.SMTP_HOST || !process.env.SMTP_FROM)) throw new Error('Set SMTP_HOST and SMTP_FROM in smtp mode');
-  if (!['smtp','console'].includes(config.emailMode)) throw new Error('EMAIL_MODE must be smtp or console');
+  if (config.emailMode === 'brevo' && (!process.env.BREVO_API_KEY || !process.env.BREVO_SENDER_EMAIL)) throw new Error('Set BREVO_API_KEY and BREVO_SENDER_EMAIL in brevo mode');
+  if (!['smtp','console','brevo'].includes(config.emailMode)) throw new Error('EMAIL_MODE must be smtp, console, or brevo');
 }

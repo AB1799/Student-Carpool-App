@@ -16,7 +16,9 @@ export type Ride = {
 export type SeatRequest = { id: string; riderName: string; passengers: number; pickupLabel?: string; status: string };
 export type Notice = { id: string; title: string; body: string; createdAt: string; readAt: string | null };
 
-export const apiOrigin = (process.env.EXPO_PUBLIC_API_URL ?? (Platform.OS === 'android' ? 'http://10.0.2.2:4000' : 'http://localhost:4000')).replace(/\/$/, '');
+export const apiOrigin = process.env.EXPO_PUBLIC_SAME_ORIGIN === 'true' && Platform.OS === 'web'
+  ? globalThis.location.origin
+  : (process.env.EXPO_PUBLIC_API_URL ?? (Platform.OS === 'android' ? 'http://10.0.2.2:4000' : 'http://localhost:4000')).replace(/\/$/, '');
 export class ApiError extends Error {
   constructor(message: string, public status: number, public code: string) { super(message); }
 }

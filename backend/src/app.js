@@ -1,3 +1,4 @@
+import {fileURLToPath} from 'node:url';
 import express from 'express';
 import helmet from 'helmet';
 import cors from 'cors';
@@ -38,6 +39,10 @@ app.use('/api/reports',reportRoutes);
 app.use('/api/maps',mapsRoutes);
 app.use('/api/my-rides',myRidesRoutes);
 app.use('/api/ratings',ratingsRoutes);
+if(process.env.SERVE_WEB === 'true') {
+  const webDist=new URL('../../frontend/dist/',import.meta.url);
+  app.use(express.static(fileURLToPath(webDist)));
+}
 app.use((req,res,next)=>next(new HttpError(404,'Endpoint not found','NOT_FOUND')));
 app.use(errorHandler);
 export default app;

@@ -1,0 +1,34 @@
+services:
+  - type: web
+    name: unt-carpool-live
+    runtime: node
+    plan: free
+    buildCommand: cd frontend && npm ci --include=dev && npm run check && npx expo export --platform web && cd ../backend && npm ci --omit=dev
+    startCommand: cd backend && npm run db:migrate && npm start
+    healthCheckPath: /api/health
+    autoDeployTrigger: "off"
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: NODE_ENV
+        value: production
+      - key: EXPO_PUBLIC_SAME_ORIGIN
+        value: "true"
+      - key: EXPO_PUBLIC_DEMO_ONLY
+        value: "false"
+      - key: EXPO_PUBLIC_ENABLE_DEMO
+        value: "false"
+      - key: SERVE_WEB
+        value: "true"
+      - key: TRUST_PROXY_HOPS
+        value: "1"
+      - key: EMAIL_MODE
+        value: brevo
+      - key: JWT_SECRET
+        generateValue: true
+      - key: DATABASE_URL
+        sync: false
+      - key: BREVO_API_KEY
+        sync: false
+      - key: BREVO_SENDER_EMAIL
+        sync: false
