@@ -23,7 +23,21 @@ async function sendEmail(to, subject, text) {
       }),
       signal: AbortSignal.timeout(10_000),
     });
-    if (!response.ok) throw new Error(`Brevo returned HTTP ${response.status}`);
+    if (!response.ok) {
+      const {code, message} = await response.json().catch(() => ({})) ?? {};
+      const detail = typeof message === 'string' ? message.toLowerCase() : '';
+      const reasons = [
+        [/activat|suspend|account.*(?:block|disable)|transactional.*(?:enable|disable)/, 'transactional sending or account status'],
+        [/sender|\bfrom\b|domain|dkim/, 'sender address or domain'],
+        [/recipient|destination|deliverable/, 'recipient address'],
+        [/ip address|unauthorized ip/, 'IP authorization'],
+        [/api.key|permission|unauthoriz/, 'API key or permissions'],
+        [/quota|credit|limit/, 'sending quota or rate limit'],
+      ];
+      const reason = reasons.find(([pattern]) => pattern.test(detail))?.[1] ?? 'unclassified provider rejection';
+      const providerCode = /^[a-z_]{1,40}$/.test(code ?? '') ? code : 'unknown';
+      throw new Error(`Brevo returned HTTP ${response.status} (${providerCode}: ${reason})`);
+    }
     return;
   }
   await smtpTransport().sendMail({from: process.env.SMTP_FROM, to, subject, text});
