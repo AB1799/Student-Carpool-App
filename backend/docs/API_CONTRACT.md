@@ -16,9 +16,11 @@ Success returns JSON with a named object (`user`, `ride`, `rides`, `booking`, et
 | POST `/api/auth/register` | `{ "fullName":"Jordan Lee", "email":"jordan@my.unt.edu", "password":"password123" }` | 201; code emailed or logged to backend console in dev |
 | POST `/api/auth/verify-email` | `{ "email":"jordan@my.unt.edu", "code":"123456" }` | 200, verified |
 | POST `/api/auth/resend-verification` | `{ "email":"jordan@my.unt.edu" }` | Generic response; 60-second resend cooldown |
+| POST `/api/auth/forgot-password` | `{ "email":"jordan@my.unt.edu" }` | Generic response. An eligible verified user receives a single-use reset code valid for 20 minutes. |
+| POST `/api/auth/reset-password` | `{ "email":"jordan@my.unt.edu", "code":"(64-character code)", "password":"NewPassword123" }` | Sets the new password and revokes the user's prior sessions. |
 | POST `/api/auth/login` | `{ "email":"jordan@my.unt.edu", "password":"password123" }` | `token` and `user` (`id`, `emailVerified`, `role`, etc.) |
 
-JWTs last 12 hours. **Logout in the mobile app removes its saved token** as specified by the UML. Use Expo SecureStore, not plaintext AsyncStorage, for the token. Backend does not currently provide server-side token revocation.
+JWTs last 12 hours. **Logout in the mobile app removes its saved token** as specified by the UML. Use Expo SecureStore, not plaintext AsyncStorage, for the token. Password reset and account suspension revoke existing tokens server-side.
 
 ## 2. Account and vehicle (FR-04–05)
 
@@ -55,6 +57,8 @@ Vehicle example:
 
 Returns `201 { "ride": {"id":"<uuid>","status":"OPEN","seatsTotal":2,"seatsAvailable":2,"departureTime":"..."} }`.
 
+Optionally send `repeatDepartures` containing up to 28 additional distinct ISO timestamps within four weeks of the first departure. The server posts all dates together and returns the new rides in `rides`. Each date can be edited or cancelled independently.
+
 Other endpoints: `GET /api/rides/mine` (driver's offers), `GET /api/rides/:id` (details), `PUT /api/rides/:id` (full replacement of ride details, only until first confirmed booking), `POST /api/rides/:id/cancel` (driver cancellation), `POST /api/rides/:id/complete` (driver, once departure time has passed).
 
 ### Find a ride
@@ -83,6 +87,7 @@ The backend excludes expired/cancelled rides, your own rides, requests you have 
 | GET `/api/requests/mine` | Rider sees own pending/accepted/rejected requests |
 | PUT `/api/requests/:id/accept` | Driver accepts a pending request; creates one booking *atomically*; returns `{ "booking": {...} }` |
 | PUT `/api/requests/:id/reject` | Driver rejects a pending request |
+| PUT `/api/requests/:id/cancel` | Rider cancels a pending or confirmed request before departure. For a confirmed request, the booking closes and seats return to the ride. |
 | GET `/api/bookings` | Rider or driver sees all confirmed/cancelled/completed bookings for My Rides |
 | GET `/api/bookings/:id/messages` | Booking participant reads last 100 saved messages (oldest to newest) |
 
@@ -136,4 +141,4 @@ There is **no public admin registration**. For a development-only admin test, ma
 - `429` too many auth requests.
 - `500` unexpected server/database error; `503` email transport unavailable during registration.
 
-The API has no Google Maps REST calls: the **frontend's place search resolves coordinates**, and the backend's PostGIS performs spatial matching.
+See [Maps, Ratings, and My Rides](MAPS_RATINGS_MYRIDES.md) for the authenticated maps, ratings, and combined ride-list endpoints.

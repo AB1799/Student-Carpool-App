@@ -72,13 +72,9 @@ This covers the UML seat-check sequence (SD-11 and SD-12) and FR-12. It is the m
 | FR-17 Report user | `POST /api/reports` |
 | FR-18 Admin moderation | admin report list, resolve, suspend routes |
 
-## Honest status of execution
+## Verification
 
-**Implemented in source:** schema, PostGIS queries, authentication, role/ownership enforcement, ride workflows, chat persistence/events, notifications, report/review endpoints, schema setup, synthetic full-flow smoke script, and five matching unit tests.
-
-**Verified in the generation environment:** all JS files pass Node's syntax parser; all five matching tests pass.
-
-**Not yet verified end-to-end:** starting PostgreSQL, applying migrations, installing npm packages, running the live Express/Socket.IO service, handling real Expo clients, SMTP and push deliveries. Those require Docker/npm/credentials that were not available here. Run `npm run smoke` after bootstrapping locally to verify and debug integration before merging to the shared repository.
+The backend syntax and matching tests pass. The local PostgreSQL/PostGIS workflow has been exercised for account verification, ride matching, booking, chat, and reviews. The web flow has also been checked with a local SMTP test server. Public deployment, delivery to a UNT inbox, and push delivery need their own environment tests.
 
 ## Next steps for the team
 

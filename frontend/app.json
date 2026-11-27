@@ -1,0 +1,16 @@
+{
+  "expo": {
+    "name": "UNT Carpool",
+    "slug": "unt-carpool",
+    "scheme": "untcarpool",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "web": {
+      "bundler": "metro"
+    },
+    "plugins": [
+      "expo-font",
+      "expo-secure-store"
+    ]
+  }
+}

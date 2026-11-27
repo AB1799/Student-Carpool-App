@@ -19,3 +19,14 @@ export async function sendVerificationEmail(email, code) {
   }
   await smtpTransport().sendMail({from:process.env.SMTP_FROM,to:email,subject:'UNT Carpool verification code',text:`Your UNT Carpool verification code is ${code}. It expires in 10 minutes.`});
 }
+
+export async function sendPasswordResetEmail(email, code) {
+  if(config.emailMode === 'console') {
+    console.log(`[DEV ONLY] Password reset code for ${email}: ${code}`);
+    return;
+  }
+  await smtpTransport().sendMail({
+    from:process.env.SMTP_FROM,to:email,subject:'Reset your UNT Carpool password',
+    text:`Paste this reset code into UNT Carpool within 20 minutes:\n\n${code}\n\nIf you did not request this, you can ignore this message.`,
+  });
+}

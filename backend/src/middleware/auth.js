@@ -8,8 +8,9 @@ export const auth = asyncRoute(async (req,res,next) => {
   let claims;
   try {claims=jwt.verify(match[1],config.jwtSecret,{algorithms:['HS256'],issuer:'unt-carpool'});}
   catch {throw new HttpError(401,'Invalid or expired token','INVALID_TOKEN');}
-  const {rows}=await db('SELECT id,email,full_name,email_verified,role,suspended FROM users WHERE id=$1',[claims.sub]);
+  const {rows}=await db('SELECT id,email,full_name,email_verified,role,suspended,session_version FROM users WHERE id=$1',[claims.sub]);
   if(!rows[0] || rows[0].suspended) throw new HttpError(403,'Account unavailable or suspended','ACCOUNT_UNAVAILABLE');
+  if ((claims.ver ?? 0) !== rows[0].session_version) throw new HttpError(401,'Your session has expired','INVALID_TOKEN');
   req.user=rows[0]; next();
 });
 export function requireVerified(req,res,next) {

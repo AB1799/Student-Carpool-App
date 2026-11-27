@@ -5,9 +5,11 @@ import {auth,requireVerified} from '../middleware/auth.js';
 import {asyncRoute,HttpError,assert} from '../lib/errors.js';
 import {locationSchema,departureSchema,uuid,safeInt} from '../lib/geo.js';
 import {rankMatches} from '../lib/matching.js';
+import {sessionEvents} from '../services/sessionEvents.js';
 import {notify} from '../services/notifications.js';
 const router=Router(); router.use(auth);
 const rideBody=z.object({origin:locationSchema,destination:locationSchema,departureTime:departureSchema,seats:safeInt(1,8)}).strict();
+const seriesBody=rideBody.extend({repeatDepartures:z.array(departureSchema).max(28).optional()});
 const searchSchema=z.object({pickupLat:z.coerce.number().min(-90).max(90),pickupLng:z.coerce.number().min(-180).max(180),destinationLat:z.coerce.number().min(-90).max(90),destinationLng:z.coerce.number().min(-180).max(180),departureTime:departureSchema,seats:safeInt(1,8).default(1),pickupRadiusMeters:safeInt(100,20000).default(5000),destinationRadiusMeters:safeInt(100,20000).default(6000),timeWindowMinutes:safeInt(5,180).default(60)}).strict();
 const rideSelect=`r.id,r.driver_id AS "driverId",u.full_name AS "driverName",
  (SELECT ROUND(AVG(rv.rating)::numeric,1) FROM reviews rv WHERE rv.reviewed_id=r.driver_id) AS "driverRating",r.origin_label AS "originLabel",r.destination_label AS "destinationLabel",
@@ -30,7 +32,7 @@ router.get('/search',requireVerified,asyncRoute(async(req,res)=>{
     AND r.departure_time BETWEEN $5::timestamptz - ($10::int*INTERVAL '1 minute') AND $5::timestamptz + ($10::int*INTERVAL '1 minute')
     AND ST_DWithin(r.origin,ST_SetSRID(ST_MakePoint($2,$1),4326)::geography,$8)
     AND ST_DWithin(r.destination,ST_SetSRID(ST_MakePoint($4,$3),4326)::geography,$9)
-    AND NOT EXISTS(SELECT 1 FROM ride_requests rr WHERE rr.ride_id=r.id AND rr.rider_id=$6 AND rr.status IN ('PENDING','ACCEPTED'))
+    AND NOT EXISTS(SELECT 1 FROM ride_requests rr WHERE rr.ride_id=r.id AND rr.rider_id=$6)
     LIMIT 100`,[p.pickupLat,p.pickupLng,p.destinationLat,p.destinationLng,p.departureTime,req.user.id,p.seats,p.pickupRadiusMeters,p.destinationRadiusMeters,p.timeWindowMinutes]);
   const rides=rankMatches(rows,settings).map(({pickup_distance_meters,destination_distance_meters,time_difference_minutes,...rest})=>rest);
   res.json({rides,searchSettings:settings,ranking:'50% pickup distance, 25% destination distance, 25% time compatibility (provisional)'});
@@ -40,15 +42,28 @@ router.get('/mine',asyncRoute(async(req,res)=>{
   res.json({rides:rows});
 }));
 router.post('/',requireVerified,asyncRoute(async(req,res)=>{
-  const b=rideBody.parse(req.body);
-  assert(new Date(b.departureTime)>new Date(),400,'Departure must be in the future');
-  const {rows:vehicles}=await db('SELECT id,seat_capacity FROM vehicles WHERE user_id=$1',[req.user.id]);
-  const v=vehicles[0];assert(v,400,'Add your vehicle before posting a ride','VEHICLE_REQUIRED');
-  assert(b.seats<=v.seat_capacity,400,'Seats exceed your vehicle capacity');
-  const {rows}=await db(`INSERT INTO ride_offers(driver_id,vehicle_id,origin_label,destination_label,origin,destination,departure_time,seats_total,seats_available)
-     VALUES($1,$2,$3,$4,ST_SetSRID(ST_MakePoint($5,$6),4326)::geography,ST_SetSRID(ST_MakePoint($7,$8),4326)::geography,$9,$10,$10)
-     RETURNING id,status,seats_total AS "seatsTotal",seats_available AS "seatsAvailable",departure_time AS "departureTime"`,[req.user.id,v.id,b.origin.label,b.destination.label,b.origin.lng,b.origin.lat,b.destination.lng,b.destination.lat,b.departureTime,b.seats]);
-  res.status(201).json({ride:rows[0]});
+  const b=seriesBody.parse(req.body);
+  const departures=[b.departureTime,...(b.repeatDepartures ?? [])].map(value=>new Date(value));
+  const now=Date.now();
+  assert(departures.every(time=>+time>now),400,'Departures must be in the future');
+  assert(new Set(departures.map(Number)).size===departures.length,400,'Choose different departure times');
+  assert(departures.slice(1).every(time=>+time>+departures[0] && +time<=+departures[0]+29*86400000),400,
+    'Repeat dates must be within four weeks after the first ride');
+  const rides=await transaction(async client=>{
+    const {rows:vehicles}=await client.query('SELECT id,seat_capacity FROM vehicles WHERE user_id=$1 FOR UPDATE',[req.user.id]);
+    const v=vehicles[0];
+    assert(v,400,'Add your vehicle before posting a ride','VEHICLE_REQUIRED');
+    assert(b.seats<=v.seat_capacity,400,'Seats exceed your vehicle capacity');
+    const {rows}=await client.query(`INSERT INTO ride_offers(driver_id,vehicle_id,origin_label,destination_label,origin,destination,departure_time,seats_total,seats_available)
+      SELECT $1,$2,$3,$4,ST_SetSRID(ST_MakePoint($5,$6),4326)::geography,
+        ST_SetSRID(ST_MakePoint($7,$8),4326)::geography,departures.time,$10,$10
+      FROM UNNEST($9::timestamptz[]) WITH ORDINALITY AS departures(time, position)
+      ORDER BY departures.position
+      RETURNING id,status,seats_total AS "seatsTotal",seats_available AS "seatsAvailable",departure_time AS "departureTime"`,
+      [req.user.id,v.id,b.origin.label,b.destination.label,b.origin.lng,b.origin.lat,b.destination.lng,b.destination.lat,departures,b.seats]);
+    return rows;
+  });
+  res.status(201).json({ride:rides[0],...(rides.length>1 && {rides})});
 }));
 router.get('/:id',asyncRoute(async(req,res)=>{
   const id=uuid.parse(req.params.id);
@@ -78,16 +93,17 @@ router.put('/:id',requireVerified,asyncRoute(async(req,res)=>{
 }));
 router.post('/:id/cancel',requireVerified,asyncRoute(async(req,res)=>{
   const id=uuid.parse(req.params.id);
-  const riders=await transaction(async client=>{
+  const {riders,bookings}=await transaction(async client=>{
     const {rows}=await client.query('SELECT driver_id,status FROM ride_offers WHERE id=$1 FOR UPDATE',[id]);
     const r=rows[0];assert(r && r.driver_id===req.user.id,404,'Ride not found','NOT_FOUND');
     assert(r.status==='OPEN',409,'Only open rides can be cancelled');
     const affected=await client.query(`SELECT DISTINCT rider_id FROM ride_requests WHERE ride_id=$1 AND status IN ('PENDING','ACCEPTED')`,[id]);
     await client.query(`UPDATE ride_offers SET status='CANCELLED',updated_at=NOW() WHERE id=$1`,[id]);
     await client.query(`UPDATE ride_requests SET status='CANCELLED',updated_at=NOW() WHERE ride_id=$1 AND status IN ('PENDING','ACCEPTED')`,[id]);
-    await client.query(`UPDATE bookings SET status='CANCELLED' WHERE ride_id=$1 AND status='CONFIRMED'`,[id]);
-    return affected.rows.map(v=>v.rider_id);
+    const {rows:bookings}=await client.query(`UPDATE bookings SET status='CANCELLED' WHERE ride_id=$1 AND status='CONFIRMED' RETURNING id`,[id]);
+    return {riders:affected.rows.map(v=>v.rider_id),bookings};
   });
+  for(const booking of bookings) sessionEvents.emit('booking-cancelled',booking.id);
   await Promise.all(riders.map(riderId=>notify(riderId,'RIDE_CANCELLED','Ride cancelled','Your driver cancelled this ride.',{rideId:id})));
   res.json({message:'Ride cancelled'});
 }));

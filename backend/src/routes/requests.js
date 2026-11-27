@@ -3,6 +3,7 @@ import {z} from 'zod';
 import {db,transaction} from '../db.js';
 import {auth,requireVerified} from '../middleware/auth.js';
 import {asyncRoute,assert} from '../lib/errors.js';
+import {sessionEvents} from '../services/sessionEvents.js';
 import {notify} from '../services/notifications.js';
 const router=Router();router.use(auth,requireVerified);
 router.get('/mine',asyncRoute(async(req,res)=>{
@@ -43,5 +44,29 @@ router.put('/:id/reject',asyncRoute(async(req,res)=>{
   assert(rows[0],404,'Pending request not found','NOT_FOUND');
   await notify(rows[0].riderId,'REQUEST_REJECTED','Ride request declined','The driver could not accept this request.',{rideId:rows[0].rideId});
   res.json({message:'Request rejected'});
+}));
+router.put('/:id/cancel',asyncRoute(async(req,res)=>{
+  const id=z.string().uuid().parse(req.params.id);
+  const result=await transaction(async client=>{
+    const original=await client.query('SELECT ride_id FROM ride_requests WHERE id=$1 AND rider_id=$2',[id,req.user.id]);
+    assert(original.rows[0],404,'Request not found','NOT_FOUND');
+    const {rows:[ride]}=await client.query('SELECT id,driver_id,status,departure_time FROM ride_offers WHERE id=$1 FOR UPDATE',[original.rows[0].ride_id]);
+    assert(ride.status==='OPEN' && new Date(ride.departure_time)>new Date(),409,'This ride can no longer be cancelled','RIDE_CLOSED');
+    const {rows:[request]}=await client.query('SELECT status,passengers FROM ride_requests WHERE id=$1 FOR UPDATE',[id]);
+    assert(['PENDING','ACCEPTED'].includes(request.status),409,'This request can no longer be cancelled','REQUEST_CLOSED');
+    let bookingId;
+    if(request.status==='ACCEPTED') {
+      const {rows:[booking]}=await client.query(`UPDATE bookings SET status='CANCELLED'
+        WHERE request_id=$1 AND status='CONFIRMED' RETURNING id`,[id]);
+      assert(booking,409,'This booking can no longer be cancelled','BOOKING_CLOSED');
+      bookingId=booking.id;
+      await client.query('UPDATE ride_offers SET seats_available=seats_available+$2,updated_at=NOW() WHERE id=$1',[ride.id,request.passengers]);
+    }
+    await client.query("UPDATE ride_requests SET status='CANCELLED',updated_at=NOW() WHERE id=$1",[id]);
+    return {rideId:ride.id,driverId:ride.driver_id,bookingId};
+  });
+  if(result.bookingId) sessionEvents.emit('booking-cancelled',result.bookingId);
+  await notify(result.driverId,'RIDER_CANCELLED','Rider cancelled','A rider cancelled their seat request.',{rideId:result.rideId});
+  res.json({message:'Seat request cancelled'});
 }));
 export default router;

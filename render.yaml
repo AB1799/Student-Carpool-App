@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: unt-carpool-web
+    runtime: static
+    rootDir: frontend
+    buildCommand: npm ci && npm run check && npx expo export --platform web
+    staticPublishPath: ./dist
+    autoDeployTrigger: "off"
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: EXPO_PUBLIC_DEMO_ONLY
+        value: "true"

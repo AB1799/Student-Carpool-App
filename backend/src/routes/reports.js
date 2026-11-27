@@ -2,6 +2,7 @@ import {Router} from 'express';
 import {z} from 'zod';
 import {db} from '../db.js';
 import {auth,requireVerified,requireAdmin} from '../middleware/auth.js';
+import {sessionEvents} from '../services/sessionEvents.js';
 import {asyncRoute,assert} from '../lib/errors.js';
 const router=Router();router.use(auth);
 router.post('/',requireVerified,asyncRoute(async(req,res)=>{
@@ -14,8 +15,9 @@ router.post('/',requireVerified,asyncRoute(async(req,res)=>{
   res.status(201).json({report:rows[0]});
 }));
 router.get('/',requireAdmin,asyncRoute(async(req,res)=>{
-  const {rows}=await db(`SELECT r.id,r.reporter_id AS "reporterId",r.reported_id AS "reportedId",r.reason,r.status,r.created_at AS "createdAt"
-    FROM reports r ORDER BY CASE WHEN r.status='OPEN' THEN 0 ELSE 1 END,r.created_at DESC LIMIT 100`);
+  const {rows}=await db(`SELECT r.id,r.reporter_id AS "reporterId",r.reported_id AS "reportedId",r.reason,r.status,r.created_at AS "createdAt",
+    reporter.full_name AS "reporterName",reported.full_name AS "reportedName",reported.suspended AS "reportedSuspended"
+    FROM reports r JOIN users reporter ON reporter.id=r.reporter_id JOIN users reported ON reported.id=r.reported_id ORDER BY CASE WHEN r.status='OPEN' THEN 0 ELSE 1 END,r.created_at DESC LIMIT 100`);
   res.json({reports:rows});
 }));
 router.put('/:id/resolve',requireAdmin,asyncRoute(async(req,res)=>{
@@ -27,7 +29,7 @@ router.put('/users/:id/suspend',requireAdmin,asyncRoute(async(req,res)=>{
   const id=z.string().uuid().parse(req.params.id);
   const b=z.object({suspended:z.boolean()}).strict().parse(req.body);
   assert(id!==req.user.id,400,'You cannot suspend your own account');
-  const {rows}=await db(`UPDATE users SET suspended=$2,updated_at=NOW() WHERE id=$1 AND role='STUDENT' RETURNING id,suspended`,[id,b.suspended]);
+  const {rows}=await db(`UPDATE users SET suspended=$2,session_version=session_version+CASE WHEN $2 AND NOT suspended THEN 1 ELSE 0 END,updated_at=NOW() WHERE id=$1 AND role='STUDENT' RETURNING id,suspended`,[id,b.suspended]);
   assert(rows[0],404,'Student not found','NOT_FOUND');
   res.json({user:rows[0]});
 }));

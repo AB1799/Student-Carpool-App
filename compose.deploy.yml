@@ -1,0 +1,56 @@
+services:
+  migrate:
+    build: ./backend
+    command: ["node", "database/migrate.js"]
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL in your deployment environment}
+
+  api:
+    build: ./backend
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4000/api/health').then(response => process.exit(response.ok ? 0 : 1), () => process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      start_period: 10s
+      retries: 5
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL}
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET}
+      CLIENT_ORIGIN: ${PUBLIC_SITE_ORIGIN:?Set PUBLIC_SITE_ORIGIN}
+      TRUST_PROXY_HOPS: 1
+      EMAIL_MODE: smtp
+      SMTP_HOST: ${SMTP_HOST:?Set SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_FROM: ${SMTP_FROM:?Set SMTP_FROM}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      GOOGLE_MAPS_API_KEY: ${GOOGLE_MAPS_API_KEY:-}
+      EXPO_PUSH_ENABLED: ${EXPO_PUSH_ENABLED:-false}
+      EXPO_ACCESS_TOKEN: ${EXPO_ACCESS_TOKEN:-}
+
+  web:
+    build:
+      context: ./frontend
+      args:
+        EXPO_PUBLIC_API_URL: ${PUBLIC_SITE_ORIGIN:?Set PUBLIC_SITE_ORIGIN}
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+    environment:
+      PUBLIC_SITE_ADDRESS: ${PUBLIC_SITE_ADDRESS:?Set PUBLIC_SITE_ADDRESS}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  caddy_data:
+  caddy_config:
