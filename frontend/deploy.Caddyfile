@@ -1,0 +1,14 @@
+{$PUBLIC_SITE_ADDRESS} {
+	encode zstd gzip
+
+	@backend path /api/* /socket.io /socket.io/*
+	handle @backend {
+		reverse_proxy api:4000
+	}
+
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+}
